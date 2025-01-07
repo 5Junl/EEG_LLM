@@ -10,13 +10,14 @@
 
 import math
 from functools import partial
-
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from timm.models.layers import drop_path, to_2tuple, trunc_normal_
 from timm.models.registry import register_model
 from einops import rearrange
+from transformers import CLIPTextModel, CLIPTokenizer
 
 
 def _cfg(url='', **kwargs):
@@ -208,7 +209,7 @@ class Block(nn.Module):
             x = x + self.drop_path(self.gamma_2 * self.mlp(self.norm2(x)))
         return x
 
-
+# patch 
 class PatchEmbed(nn.Module):
     """ EEG to Patch Embedding
     """
@@ -229,7 +230,7 @@ class PatchEmbed(nn.Module):
         x = self.proj(x).flatten(2).transpose(1, 2)
         return x
 
-
+# Temporal Encoder: conv, group norm, gelu
 class TemporalConv(nn.Module):
     """ EEG to Patch Embedding
     """
@@ -270,6 +271,23 @@ class NeuralTransformer(nn.Module):
         # for param in self.patch_embed.parameters():
         #     param.requires_grad = False
 
+        # Initialize CLIP text encoder
+        self.text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-base-patch32")
+        self.tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-base-patch32")
+        
+        # Freeze CLIP parameters
+        for param in self.text_encoder.parameters():
+            param.requires_grad = False
+        # Temperature parameter
+        self.text_projection = nn.Sequential(
+            nn.Conv1d(512, 356, kernel_size=3, padding=1),
+            nn.BatchNorm1d(356),
+            nn.ReLU(),
+            nn.Conv1d(356, 200, kernel_size=3, padding=1),
+            nn.BatchNorm1d(200),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool1d(1)  # Ensure output size
+        )        
         self.num_classes = num_classes
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
 
@@ -350,6 +368,20 @@ class NeuralTransformer(nn.Module):
         self.num_classes = num_classes
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
+    def get_text_features(self, labels):
+        text_descriptions = [f"{label}" for label in labels]
+        text_tokens = self.tokenizer(text_descriptions, padding=True, return_tensors="pt")
+        text_tokens = {k: v.to(self.text_encoder.device) for k,v in text_tokens.items()}
+        text_features = self.text_encoder(**text_tokens).last_hidden_state[:, 0, :]
+        # Project to same dimension as EEG features
+        # Reshape for conv1d: [B, C, L]
+        text_features = text_features.unsqueeze(-1)  # Add sequence length dimension [B, 512, 1]
+    
+        # Project using conv layers
+        text_features = self.text_projection(text_features)  # [B, 200, 1]
+        text_features = text_features.squeeze(-1)  # [B, 200]
+        return text_features
+
     def forward_features(self, x, input_chans=None, return_patch_tokens=False, return_all_tokens=False, **kwargs):
         batch_size, n, a, t = x.shape
         input_time_window = a if t == self.patch_size else t
@@ -391,15 +423,30 @@ class NeuralTransformer(nn.Module):
             else:
                 return x[:, 0]
 
-    def forward(self, x, input_chans=None, return_patch_tokens=False, return_all_tokens=False, **kwargs):
+    def forward(self, x, text=None, input_chans=None, is_training=False):
         '''
         x: [batch size, number of electrodes, number of patches, patch size]
         For example, for an EEG sample of 4 seconds with 64 electrodes, x will be [batch size, 64, 4, 200]
         '''
-        x = self.forward_features(x, input_chans=input_chans, return_patch_tokens=return_patch_tokens, return_all_tokens=return_all_tokens, **kwargs)
-        x = self.head(x)
-        return x
-
+        # Get EEG features 
+        eeg_features = self.forward_features(x, input_chans)
+        
+        if is_training and text is not None:
+            # Get text features
+            text_features = self.get_text_features(text)
+            
+            # Normalize features
+            eeg_features = F.normalize(eeg_features, dim=-1)
+            text_features = F.normalize(text_features, dim=-1)
+            
+            # Now both are shape [batch_size, 200]
+            similarity = eeg_features @ text_features.t()
+            logits = self.head(eeg_features)
+            
+            return logits, similarity
+            
+        return self.head(eeg_features)
+    
     def forward_intermediate(self, x, layer_id=12, norm_output=False):
         x = self.patch_embed(x)
         batch_size, seq_len, _ = x.size()

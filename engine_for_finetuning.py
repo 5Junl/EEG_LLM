@@ -14,10 +14,41 @@ import torch
 from timm.utils import ModelEma
 import utils
 from einops import rearrange
+import torch.nn.functional as F
 
-def train_class_batch(model, samples, target, criterion, ch_names):
-    outputs = model(samples, ch_names)
-    loss = criterion(outputs, target)
+def get_text_description(targets):
+    """Convert targets to text descriptions"""
+    label_to_text = {
+        0: 'Happy',
+        1: 'Surprise',
+        2: 'Neutral',
+        3: 'Disgust', 
+        4: 'Fear',
+        5: 'Sad',
+        6: 'Anger'
+    }
+    return [label_to_text[t.item()] for t in targets]
+
+def train_class_batch(model, samples, targets, criterion, ch_names, texts=None):
+    """Modified to handle contrastive learning"""
+    if texts is not None:
+        # Get both classification and contrastive losses
+        logits, eeg_text_similarity = model(samples, text=texts, input_chans=ch_names, is_training=True)
+        
+        # Classification loss
+        cls_loss = criterion(logits, targets)
+        
+        # Contrastive loss 
+        labels = torch.arange(eeg_text_similarity.size(0), device=eeg_text_similarity.device)
+        contrastive_loss = F.cross_entropy(eeg_text_similarity, labels)
+        
+        # Combined loss
+        loss = 0.01*cls_loss + contrastive_loss
+        return loss, logits
+    
+    # Original classification only
+    outputs = model(samples, input_chans=ch_names)
+    loss = criterion(outputs, targets)
     return loss, outputs
 
 
@@ -70,17 +101,20 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         samples = rearrange(samples, 'B N (A T) -> B N A T', T=200)
         
         targets = targets.to(device, non_blocking=True)
+        # Generate text descriptions from targets
+        text_inputs = get_text_description(targets)    
+        # print("input label is: ",text_inputs)
         if is_binary:
             targets = targets.float().unsqueeze(-1)
 
         if loss_scaler is None:
             samples = samples.half()
             loss, output = train_class_batch(
-                model, samples, targets, criterion, input_chans)
+                model, samples, targets, criterion, input_chans, text_inputs)
         else:
             with torch.cuda.amp.autocast():
                 loss, output = train_class_batch(
-                    model, samples, targets, criterion, input_chans)
+                    model, samples, targets, criterion, input_chans, text_inputs)
 
         loss_value = loss.item()
 
