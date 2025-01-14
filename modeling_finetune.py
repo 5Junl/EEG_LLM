@@ -354,15 +354,19 @@ class NeuralTransformer(nn.Module):
         batch_size, n, a, t = x.shape
         input_time_window = a if t == self.patch_size else t
         x = self.patch_embed(x)
-
+        # print("after patch", x.shape)
         cls_tokens = self.cls_token.expand(batch_size, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
 
         x = torch.cat((cls_tokens, x), dim=1)
+        # print("after cat", x.shape)
 
         pos_embed_used = self.pos_embed[:, input_chans] if input_chans is not None else self.pos_embed
+        # print("pos_embed_used", pos_embed_used.shape, input_chans)
         if self.pos_embed is not None:
             pos_embed = pos_embed_used[:, 1:, :].unsqueeze(2).expand(batch_size, -1, input_time_window, -1).flatten(1, 2)
+            # print(pos_embed.shape, input_time_window)
             pos_embed = torch.cat((pos_embed_used[:,0:1,:].expand(batch_size, -1, -1), pos_embed), dim=1)
+            # print(x.shape, pos_embed.shape)
             x = x + pos_embed
         if self.time_embed is not None:
             nc = n if t == self.patch_size else a
@@ -396,6 +400,7 @@ class NeuralTransformer(nn.Module):
         x: [batch size, number of electrodes, number of patches, patch size]
         For example, for an EEG sample of 4 seconds with 64 electrodes, x will be [batch size, 64, 4, 200]
         '''
+        # print(x.shape)
         x = self.forward_features(x, input_chans=input_chans, return_patch_tokens=return_patch_tokens, return_all_tokens=return_all_tokens, **kwargs)
         x = self.head(x)
         return x

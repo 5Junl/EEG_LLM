@@ -15,23 +15,23 @@ from timm.utils import ModelEma
 import utils
 from einops import rearrange
 import torch.nn as nn
-def train_class_batch(model, samples, targets, criterion, ch_names, discriminator=None, disc_weight=1):
-# def train_class_batch(model, samples, target, criterion, ch_names):
+# def train_class_batch(model, samples, targets, criterion, ch_names, discriminator=None, disc_weight=1):
+def train_class_batch(model, samples, targets, criterion, ch_names):
     outputs = model(samples, ch_names)
     
     base_loss = criterion(outputs, targets)
     
     # Add discriminator loss if provided
-    if discriminator is not None:
+    # if discriminator is not None:
             
-        # Get discriminator predictions (trying to fool it to predict these as text)
-        disc_outputs = discriminator(outputs)
-        disc_targets = torch.ones_like(disc_outputs)  # Want discriminator to think these are text
-        disc_loss = nn.BCELoss()(disc_outputs, disc_targets)
+    #     # Get discriminator predictions (trying to fool it to predict these as text)
+    #     disc_outputs = discriminator(outputs)
+    #     disc_targets = torch.zeros_like(disc_outputs)  # Want discriminator to think these are text
+    #     disc_loss = nn.BCELoss()(disc_outputs, disc_targets)
         
-        # Combine losses
-        total_loss = base_loss + disc_weight * disc_loss
-        return total_loss, outputs
+    #     # Combine losses
+    #     total_loss = base_loss + disc_weight * disc_loss
+    #     return total_loss, outputs
         
     return base_loss, outputs
 
@@ -46,7 +46,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     device: torch.device, epoch: int, loss_scaler, max_norm: float = 0,
                     model_ema: Optional[ModelEma] = None, log_writer=None,
                     start_steps=None, lr_schedule_values=None, wd_schedule_values=None,
-                    num_training_steps_per_epoch=None, update_freq=None, ch_names=None, is_binary=True, discriminator=None):
+                    num_training_steps_per_epoch=None, update_freq=None, ch_names=None, is_binary=True):
     input_chans = None
     # for name, param in model.named_parameters():
     #     if name == 'head.weight' or name == 'head.bias':
@@ -94,6 +94,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             samples = samples.half()
             loss, output = train_class_batch(
                 model, samples, targets, criterion, input_chans)
+            
         else:
             with torch.cuda.amp.autocast():
                 loss, output = train_class_batch(

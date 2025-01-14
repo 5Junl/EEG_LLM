@@ -257,6 +257,7 @@ def train_discriminator(eeg_encoder, discriminator, train_loader, args):
     return discriminator
 
 def main():
+    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # Setup training args
     class Args:

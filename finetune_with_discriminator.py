@@ -1,6 +1,6 @@
 # Add near the top of run_class_finetuning.py where other imports are
-from discriminator import Discriminator
-
+from discriminator_text2eeg import Discriminator
+import torch
 # Add this function to load and prepare the discriminator
 def setup_discriminator(device):
     # Initialize discriminator with same architecture 

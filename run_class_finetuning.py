@@ -33,24 +33,24 @@ import utils
 from scipy import interpolate
 import modeling_finetune
 # Add near the top of run_class_finetuning.py where other imports are
-from discriminator_eeg2text import Discriminator
+# from discriminator_eeg2text import Discriminator
 
 # Add this function to load and prepare the discriminator
-def setup_discriminator(device):
-    # Initialize discriminator with same architecture 
-    discriminator = Discriminator(embedding_dim=200)
+# def setup_discriminator(device):
+#     # Initialize discriminator with same architecture 
+#     discriminator = Discriminator(embedding_dim=200)
     
-    # Load saved weights
-    checkpoint = torch.load('discriminator_checkpoints/checkpoint_epoch_8.pth', map_location='cpu')
-    discriminator.load_state_dict(checkpoint['model'])
+#     # Load saved weights
+#     checkpoint = torch.load('discriminator_checkpoints/checkpoint_epoch_8.pth', map_location='cpu')
+#     discriminator.load_state_dict(checkpoint['model'])
     
-    # Move to device and freeze weights
-    discriminator = discriminator.to(device)
-    discriminator.eval()
-    for param in discriminator.parameters():
-        param.requires_grad = False
+#     # Move to device and freeze weights
+#     discriminator = discriminator.to(device)
+#     discriminator.eval()
+#     for param in discriminator.parameters():
+#         param.requires_grad = False
         
-    return discriminator
+#     return discriminator
 def get_args():
     parser = argparse.ArgumentParser('LaBraM fine-tuning and evaluation script for EEG classification', add_help=False)
     parser.add_argument('--batch_size', default=64, type=int)
@@ -137,7 +137,7 @@ def get_args():
                         help='Do not random erase first (clean) augmentation split')
 
     # * Finetuning params
-    parser.add_argument('--finetune', default='checkpoints/labram-base.pth',
+    parser.add_argument('--finetune', default='checkpoints\clip_aligned_losschanged\checkpoint-best.pth',
                         help='finetune from checkpoint')
     parser.add_argument('--model_key', default='model|module', type=str)
     parser.add_argument('--model_prefix', default='', type=str)
@@ -159,7 +159,7 @@ def get_args():
     parser.add_argument('--device', default='cuda',
                         help='device to use for training / testing')
     parser.add_argument('--seed', default=0, type=int)
-    parser.add_argument('--resume', default='checkpoints/checkpoint-best.pth',
+    parser.add_argument('--resume', default='',
                         help='resume from checkpoint')
     parser.add_argument('--auto_resume', action='store_true')
     parser.add_argument('--no_auto_resume', action='store_false', dest='auto_resume')
@@ -435,6 +435,7 @@ def main(args, ds_init):
             if "relative_position_index" in key:
                 checkpoint_model.pop(key)
 
+        # print("debug", model, checkpoint_model)
         utils.load_state_dict(model, checkpoint_model, prefix=args.model_prefix)
 
     model.to(device)
@@ -534,7 +535,7 @@ def main(args, ds_init):
             balanced_accuracy.append(test_stats['balanced_accuracy'])
         print(f"======Accuracy: {np.mean(accuracy)} {np.std(accuracy)}, balanced accuracy: {np.mean(balanced_accuracy)} {np.std(balanced_accuracy)}")
         exit(0)
-    discriminator = setup_discriminator(device)
+    # discriminator = setup_discriminator(device)
 
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
@@ -551,7 +552,7 @@ def main(args, ds_init):
             log_writer=log_writer, start_steps=epoch * num_training_steps_per_epoch,
             lr_schedule_values=lr_schedule_values, wd_schedule_values=wd_schedule_values,
             num_training_steps_per_epoch=num_training_steps_per_epoch, update_freq=args.update_freq, 
-            ch_names=ch_names, is_binary=args.nb_classes == 1, discriminator=discriminator 
+            ch_names=ch_names, is_binary=args.nb_classes == 1 
 
         )
         

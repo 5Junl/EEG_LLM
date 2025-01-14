@@ -576,6 +576,9 @@ def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, mo
     output_dir = Path(args.output_dir)
     epoch_name = str(epoch)
 
+    # print("Saving model, model's state dict:")
+    # print(model_without_ddp.state_dict())
+
     if not getattr(args, 'enable_deepspeed', False):
         checkpoint_paths = [output_dir / 'checkpoint.pth']
         if epoch == 'best':
@@ -633,6 +636,14 @@ def auto_load_model(args, model, model_without_ddp, optimizer, loss_scaler, mode
                     args.resume, map_location='cpu', check_hash=True)
             else:
                 checkpoint = torch.load(args.resume, map_location='cpu')
+                # Remove head weights if they exist
+            # keys_to_remove = ['head.weight', 'head.bias']
+            # for k in keys_to_remove:
+            #     if k in checkpoint['model']:
+            #         print(f"Removing {k}")
+            #         del checkpoint['model'][k]
+    
+            # print("debug646", checkpoint, checkpoint['model'])
             model_without_ddp.load_state_dict(checkpoint['model']) # strict: bool=True, , strict=False
             print("Resume checkpoint %s" % args.resume)
             if 'optimizer' in checkpoint and 'epoch' in checkpoint:
@@ -646,6 +657,7 @@ def auto_load_model(args, model, model_without_ddp, optimizer, loss_scaler, mode
                 print("With optim & sched!")
             if 'optimizer_disc' in checkpoint:
                 optimizer_disc.load_state_dict(checkpoint['optimizer_disc'])
+            
     else:
         # deepspeed, only support '--auto_resume'.
         if args.auto_resume:
