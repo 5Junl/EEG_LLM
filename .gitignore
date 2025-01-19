@@ -6,3 +6,11 @@
 /EEG_preprocessed
 /Label
 tempCodeRunnerFile.py
+<<<<<<< Updated upstream
+=======
+*.DESKTOP-7IAAGFG
+*.csv
+>>>>>>> Stashed changes
+*.json
+*.txt
+/datasets

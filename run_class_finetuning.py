@@ -118,7 +118,11 @@ def get_args():
                         help='Do not random erase first (clean) augmentation split')
 
     # * Finetuning params
+<<<<<<< Updated upstream
     parser.add_argument('--finetune', default='checkpoints\labram-base.pth',
+=======
+    parser.add_argument('--finetune', default='checkpoints\clip_aligned\checkpoint-best.pth',
+>>>>>>> Stashed changes
                         help='finetune from checkpoint')
     parser.add_argument('--model_key', default='model|module', type=str)
     parser.add_argument('--model_prefix', default='', type=str)
@@ -144,7 +148,7 @@ def get_args():
                         help='resume from checkpoint')
     parser.add_argument('--auto_resume', action='store_true')
     parser.add_argument('--no_auto_resume', action='store_false', dest='auto_resume')
-    parser.set_defaults(auto_resume=True)
+    parser.set_defaults(auto_resume=False)
 
     parser.add_argument('--save_ckpt', action='store_true')
     parser.add_argument('--no_save_ckpt', action='store_false', dest='save_ckpt')
