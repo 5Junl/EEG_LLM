@@ -1,1 +1,14 @@
 /gpt-2-master
+*.json
+*.pyc
+*.pth
+*.txt
+/data_processor
+/dataset_maker
+/datasets
+/EEG_preprocessed/DE
+/EEG_preprocessed/PLV_FD_PSD
+/EEG_preprocessed
+/Label
+tempCodeRunnerFile.py
+*.DESKTOP-7IAAGFG

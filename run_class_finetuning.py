@@ -17,7 +17,8 @@ import torch
 import torch.backends.cudnn as cudnn
 import json
 import os
-
+from transformers import CLIPTokenizer, CLIPTextModel 
+import torch.nn as nn
 from pathlib import Path
 from collections import OrderedDict
 from timm.data.mixup import Mixup
@@ -31,7 +32,25 @@ from utils import NativeScalerWithGradNormCount as NativeScaler
 import utils
 from scipy import interpolate
 import modeling_finetune
+# Add near the top of run_class_finetuning.py where other imports are
+# from discriminator_eeg2text import Discriminator
 
+# Add this function to load and prepare the discriminator
+# def setup_discriminator(device):
+#     # Initialize discriminator with same architecture 
+#     discriminator = Discriminator(embedding_dim=200)
+    
+#     # Load saved weights
+#     checkpoint = torch.load('discriminator_checkpoints/checkpoint_epoch_8.pth', map_location='cpu')
+#     discriminator.load_state_dict(checkpoint['model'])
+    
+#     # Move to device and freeze weights
+#     discriminator = discriminator.to(device)
+#     discriminator.eval()
+#     for param in discriminator.parameters():
+#         param.requires_grad = False
+        
+#     return discriminator
 def get_args():
     parser = argparse.ArgumentParser('LaBraM fine-tuning and evaluation script for EEG classification', add_help=False)
     parser.add_argument('--batch_size', default=64, type=int)
@@ -118,7 +137,7 @@ def get_args():
                         help='Do not random erase first (clean) augmentation split')
 
     # * Finetuning params
-    parser.add_argument('--finetune', default='',
+    parser.add_argument('--finetune', default='checkpoints\clip_aligned_losschanged\checkpoint-best.pth',
                         help='finetune from checkpoint')
     parser.add_argument('--model_key', default='model|module', type=str)
     parser.add_argument('--model_prefix', default='', type=str)
@@ -133,7 +152,7 @@ def get_args():
     parser.add_argument('--nb_classes', default=0, type=int,
                         help='number of the classification types')
 
-    parser.add_argument('--output_dir', default='',
+    parser.add_argument('--output_dir', default='checkpoints',
                         help='path where to save, empty for no saving')
     parser.add_argument('--log_dir', default=None,
                         help='path where to tensorboard log')
@@ -226,7 +245,7 @@ def get_dataset(args):
         args.nb_classes = 6
         metrics = ["accuracy", "balanced_accuracy", "cohen_kappa", "f1_weighted"]
     elif args.dataset == 'SEEDV2':
-        train_dataset, test_dataset, val_dataset = utils.prepare_SEEDV2_dataset(r"E:\EEG_preprocessed\train_val_test")
+        train_dataset, test_dataset, val_dataset = utils.prepare_SEEDV2_dataset("./EEG_preprocessed/train_val_test")
         ch_names = ['FP1', 'FPZ', 'FP2', 'AF3', 'AF4', 'F7', 'F5', 'F3', 'F1', 'FZ', 'F2', 'F4', 'F6', 'F8', 'FT7', 'FC5', 'FC3',
          'FC1', 'FCZ', 'FC2', 'FC4', 'FC6', 'FT8', 'T7', 'C5', 'C3', 'C1', 'CZ', 'C2', 'C4', 'C6', 'T8', 'TP7', 'CP5',
          'CP3', 'CP1', 'CPZ', 'CP2', 'CP4', 'CP6', 'TP8', 'P7', 'P5', 'P3', 'P1', 'PZ', 'P2', 'P4', 'P6', 'P8', 'PO7',
@@ -237,7 +256,45 @@ def get_dataset(args):
         metrics = ["accuracy", "balanced_accuracy"]
     return train_dataset, test_dataset, val_dataset, ch_names, metrics
 
+def setup_clip(device):
+    tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-base-patch32")
+    text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-base-patch32")
+    text_encoder = text_encoder.to(device)
+    text_encoder.eval()
+    text_projection = nn.Sequential(
+            nn.Conv1d(512, 356, kernel_size=3, padding=1),
+            nn.BatchNorm1d(356),
+            nn.ReLU(),
+            nn.Conv1d(356, 200, kernel_size=3, padding=1),
+            nn.BatchNorm1d(200),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool1d(1)  # Ensure output size
+        )        
+    return tokenizer, text_encoder, text_projection
 
+def get_text_embedding(text, tokenizer, text_encoder, text_projection, device):
+    tokens = tokenizer(text, padding=True, truncation=True, return_tensors="pt").to(device)
+    with torch.no_grad():
+        features = text_encoder(**tokens).last_hidden_state[:, 0, :]
+        text_embed = text_projection(features)
+    return text_embed
+
+class ContrastiveLoss(nn.Module):
+    def __init__(self, temp=0.07):
+        super().__init__()
+        self.temp = temp
+        
+    def forward(self, eeg_features, text_features):
+        # Normalized features
+        eeg_features = F.normalize(eeg_features, dim=-1)
+        text_features = F.normalize(text_features, dim=-1)
+        
+        # Cosine similarity
+        logits = torch.matmul(eeg_features, text_features.t()) / self.temp
+        labels = torch.arange(len(logits)).to(logits.device)
+        
+        loss = (F.cross_entropy(logits, labels) + F.cross_entropy(logits.t(), labels)) / 2
+        return loss
 def main(args, ds_init):
     utils.init_distributed_mode(args)
 
@@ -378,6 +435,7 @@ def main(args, ds_init):
             if "relative_position_index" in key:
                 checkpoint_model.pop(key)
 
+        # print("debug", model, checkpoint_model)
         utils.load_state_dict(model, checkpoint_model, prefix=args.model_prefix)
 
     model.to(device)
@@ -477,6 +535,7 @@ def main(args, ds_init):
             balanced_accuracy.append(test_stats['balanced_accuracy'])
         print(f"======Accuracy: {np.mean(accuracy)} {np.std(accuracy)}, balanced accuracy: {np.mean(balanced_accuracy)} {np.std(balanced_accuracy)}")
         exit(0)
+    # discriminator = setup_discriminator(device)
 
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
@@ -493,7 +552,8 @@ def main(args, ds_init):
             log_writer=log_writer, start_steps=epoch * num_training_steps_per_epoch,
             lr_schedule_values=lr_schedule_values, wd_schedule_values=wd_schedule_values,
             num_training_steps_per_epoch=num_training_steps_per_epoch, update_freq=args.update_freq, 
-            ch_names=ch_names, is_binary=args.nb_classes == 1
+            ch_names=ch_names, is_binary=args.nb_classes == 1 
+
         )
         
         if args.output_dir and args.save_ckpt:
