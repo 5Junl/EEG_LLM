@@ -6,8 +6,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-source_folder = r"E:\EEG_preprocessed\processed_3"
-target_folder = r"E:\EEG_preprocessed\train_val_test_3"
+source_folder = r"EEG_preprocessed\processed_4"
+target_folder = r"EEG_preprocessed\train_val_test"
 train_folder = os.path.join(target_folder, 'train')
 val_folder = os.path.join(target_folder, 'val')
 test_folder = os.path.join(target_folder, 'test')

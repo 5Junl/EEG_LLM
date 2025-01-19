@@ -118,7 +118,11 @@ def get_args():
                         help='Do not random erase first (clean) augmentation split')
 
     # * Finetuning params
-    parser.add_argument('--finetune', default='',
+<<<<<<< Updated upstream
+    parser.add_argument('--finetune', default='checkpoints\labram-base.pth',
+=======
+    parser.add_argument('--finetune', default='checkpoints\clip_aligned\checkpoint-best.pth',
+>>>>>>> Stashed changes
                         help='finetune from checkpoint')
     parser.add_argument('--model_key', default='model|module', type=str)
     parser.add_argument('--model_prefix', default='', type=str)
@@ -144,7 +148,7 @@ def get_args():
                         help='resume from checkpoint')
     parser.add_argument('--auto_resume', action='store_true')
     parser.add_argument('--no_auto_resume', action='store_false', dest='auto_resume')
-    parser.set_defaults(auto_resume=True)
+    parser.set_defaults(auto_resume=False)
 
     parser.add_argument('--save_ckpt', action='store_true')
     parser.add_argument('--no_save_ckpt', action='store_false', dest='save_ckpt')
@@ -193,7 +197,7 @@ def get_args():
 def get_models(args):
     model = create_model(
         args.model,
-        pretrained=False,
+        pretrained=True,
         num_classes=args.nb_classes,
         drop_rate=args.drop,
         drop_path_rate=args.drop_path,
@@ -226,7 +230,7 @@ def get_dataset(args):
         args.nb_classes = 6
         metrics = ["accuracy", "balanced_accuracy", "cohen_kappa", "f1_weighted"]
     elif args.dataset == 'SEEDV2':
-        train_dataset, test_dataset, val_dataset = utils.prepare_SEEDV2_dataset(r"E:\EEG_preprocessed\train_val_test")
+        train_dataset, test_dataset, val_dataset = utils.prepare_SEEDV2_dataset("EEG_preprocessed/train_val_test")
         ch_names = ['FP1', 'FPZ', 'FP2', 'AF3', 'AF4', 'F7', 'F5', 'F3', 'F1', 'FZ', 'F2', 'F4', 'F6', 'F8', 'FT7', 'FC5', 'FC3',
          'FC1', 'FCZ', 'FC2', 'FC4', 'FC6', 'FT8', 'T7', 'C5', 'C3', 'C1', 'CZ', 'C2', 'C4', 'C6', 'T8', 'TP7', 'CP5',
          'CP3', 'CP1', 'CPZ', 'CP2', 'CP4', 'CP6', 'TP8', 'P7', 'P5', 'P3', 'P1', 'PZ', 'P2', 'P4', 'P6', 'P8', 'PO7',
